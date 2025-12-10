@@ -630,3 +630,83 @@ Base.metadata.create_all(engine)
    - 이 모델은 면접 및 회의의 내용을 포함하는 ORM 모델을 정의하고 있습니다.
 
 이렇게 프로젝트의 핵심 기능과 관련된 코드를 설명하였습니다. 필요에 따라 수정하거나 추가해야 할 부분을 찾아보시면 됩니다. 더 궁금한 점이 있으시면 언제든지 물어봐주세요!",Bad,"['src\\utils\\__init__.py', 'src\\agents\\tools\\__init__.py', 'src\\core\\__init__.py', 'src\\__init__.py', 'src\\prompts\\__init__.py', 'tests\\__init__.py', 'src\\prompts\\company_jd_parser_prompts.py']"
+2025-12-10 20:08:51.797018,AI_ReNe,TEO,"우리 프로젝트에 추천 시스템을 도입하고 싶은데, 어떻게 도입하면 좋을 지 방법을 제안해줘.","추천 시스템을 도입하기 위해서는 다음과 같은 단계를 거칠 수 있습니다:
+
+1. **요구사항 분석**: 먼저, 추천 시스템이 어떤 기능을 제공해야 하는지 명확히 파악합니다. 예를 들어, 사용자가 특정 유형의 채용 정보를 찾고자 할 때, 해당 유형의 채용 정보를 필터링하거나 관련성 높은 정보를 추천하는 등이 될 수 있습니다.
+
+2. **데이터 수집 및 전처리**: 추천 시스템을 구현하기 위해서는 사용자의 이전 행동 데이터나 선호도 데이터가 필요합니다. 이 데이터는 사용자가 보았던 채용 정보, 검색어, 클릭한 링크 등이 포함될 수 있습니다. 이러한 데이터를 수집하고 전처리하는 과정에서, 데이터의 정확성과 완성도를 높이는 것이 중요합니다.
+
+3. **추천 알고리즘 선택**: 추천 시스템에는 다양한 알고리즘이 존재하며, 각각의 알고리즘은 특정한 장단점을 가지고 있습니다. 예를 들어, 콘텐츠 기반 필터링은 사용자가 좋아하는 채용 정보 유형을 기반으로 추천을 제공하지만, 협업 필터링은 사용자 간의 선호도를 분석하여 개인화된 추천을 제공합니다. 프로젝트의 특성과 데이터의 특성을 고려하여 적절한 알고리즘을 선택해야 합니다.
+
+4. **시스템 구현**: 선택한 알고리즘을 기반으로 추천 시스템을 구현합니다. 이 과정에서는 프로젝트의 기존 코드와 잘 통합되도록 설계되어야 하며, 효율적인 데이터 처리와 저장을 위해 필요한 자료구조와 알고리즘이 사용됩니다.
+
+5. **테스트 및 평가**: 추천 시스템이 제대로 작동하는지 테스트하고, 사용자들의 피드백을 통해 성능을 평가합니다. 이 과정에서 시스템의 정확성과 사용자 경험을 개선하기 위해 필요한 수정사항을 반영해야 합니다.
+
+6. **배포 및 모니터링**: 추천 시스템이 충분히 테스트되고 평가된 후, 프로덕션 환경에 배포합니다. 배포 후에는 시스템의 성능을 지속적으로 모니터링하고, 필요한 경우 업데이트를 진행해야 합니다.
+
+이러한 단계를 거쳐 추천 시스템을 도입하면, 사용자에게 더 나은 경험을 제공할 수 있을 것입니다.",Good,['src\\prompts\\__init__.py']
+2025-12-10 20:13:59.235762,AI_ReNe,TEO,기업한테 NCS와 RCS 레벨에 맞는 인재를 추천해주는 시스템을 넣고 싶어.,"네, 기업의 NCS와 RCS 레벨에 맞는 인재를 추천해주는 시스템을 구축하는 것은 매우 중요한 역할입니다. 이를 위해 다음과 같은 단계를 거칠 수 있습니다:
+
+### 1. **시스템 아키텍처 설계**
+   - **Frontend:** 사용자 인터페이스로, NCS와 RCS 레벨을 입력받고 추천 결과를 표시합니다.
+   - **Backend:** 데이터 처리 및 AI 분석 로직이 포함됩니다.
+   - **Database:** 사용자의 정보, 기술 스택, 경력 등이 저장됩니다.
+
+### 2. **기술 스택 선택**
+   - **Frontend:** React.js 또는 Vue.js를 사용하여 사용자 친화적인 UI를 구현합니다.
+   - **Backend:** FastAPI나 Django를 사용하여 RESTful API를 제공합니다.
+   - **AI/ML:** OpenAI의 GPT-3, Hugging Face의 Transformers 등이 활용될 수 있습니다.
+
+### 3. **데이터 수집 및 처리**
+   - **사용자 정보:** NCS와 RCS 레벨, 기술 스택, 경력 등 사용자의 정보를 수집합니다.
+   - **기술 스택 분석:** 사용자가 언급한 기술에 대한 사용 컨텍스트를 분석하여 해당 기술의 전문성과 경험을 평가합니다.
+
+### 4. **AI/ML 모델 구현**
+   - **NCS와 RCS 레벨 추출:** 주어진 텍스트에서 NCS와 RCS 레벨을 추출하는 AI 모델을 구현합니다.
+     ```python
+     def extract_ncs_level(markdown_text: str) -> str:
+         pattern = r'\*\*NCS Level:\*\*\s*\*\*(.+?)\*\*'
+         match = re.search(pattern, markdown_text)
+         if match:
+             return match.group(1).strip()
+         return ""Unknown""
+
+     def extract_rcs_level(markdown_text: str) -> str:
+         pattern = r'\*\*RCS Level:\*\*\s*\*\*(.+?)\*\*'
+         match = re.search(pattern, markdown_text)
+         if match:
+             return match.group(1).strip()
+         return ""Unknown""
+     ```
+   - **기술 스택 분석:** 사용자가 언급한 기술에 대한 사용 컨텍스트를 분석하여 해당 기술의 전문성과 경험을 평가합니다.
+
+### 5. **재능 유형 분류**
+   - **재능 유형 결정:** NCS와 RCS 레벨을 바탕으로 재능 유형(HIDDEN_GEM, BUBBLE, PROVEN_ACE, LEARNER)을 결정합니다.
+     ```python
+     def determine_talent_type(ncs_level: int, rcs_level: int) -> str:
+         if rcs_level >= ncs_level + 2:
+             return ""HIDDEN_GEM""
+         elif rcs_level <= ncs_level - 2:
+             return ""BUBBLE""
+         elif rcs_level >= 6 and ncs_level >= 6:
+             return ""PROVEN_ACE""
+         else:
+             return ""LEARNER""
+     ```
+
+### 6. **결과 출력**
+   - **JSON 리포트:** 분석 결과를 JSON 형식으로 출력하여 사용자에게 보여줍니다.
+     ```json
+     {
+       ""RCS_Level"": ""Lv. 5"",
+       ""Talent_Type"": ""PROVEN_ACE"",
+       ""Verification_Badge"": ""TROPHY""
+     }
+     ```
+
+### 7. **테스트 및 배포**
+   - **단위 테스트:** 각 함수와 모델의 정확성을 확인합니다.
+   - **통합 테스트:** 시스템 전체를 통합하여 테스트합니다.
+   - **배포:** 테스트가 완료되면 프로덕션 환경에 배포합니다.
+
+이렇게 하면 기업의 NCS와 RCS 레벨에 맞는 인재를 추천해주는 시스템을 구축할 수 있습니다.",Good,"['src\\agents\\seeker_file_upload_agent.py', 'src\\prompts\\company_jd_parser_prompts.py', 'src\\prompts\\ver1.0\\Analyst.md', 'src\\prompts\\seeker_file_upload_tool_prompts.py']"

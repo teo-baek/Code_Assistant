@@ -1,8 +1,13 @@
 import os
 import csv
 import time
+import warnings
+import socket
 from datetime import datetime
 import streamlit as st
+
+# 불필요한 경고 메세지 숨기기
+warnings.filterwarnings("ignore")
 
 try:
     from code_indexer import embed_project
@@ -17,7 +22,7 @@ from langchain_community.vectorstores import Chroma
 # 설정
 BASE_DB_PATH = "./chroma_db"
 EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
-OLLAMA_MODEL_NAME = "qwen2.5-coder:7b"
+DEFAULT_MODEL = "qwen2.5-coder:7b"
 OLLAMA_BASE_URL = "http://localhost:11434"
 FEEDBACK_FILE = "rag_feedback.csv"
 
@@ -29,6 +34,17 @@ st.markdown(
 이 도구는 Agentic RAG 기술을 사용하여, 검색된 코드가 질문과 관련이 있는지 스스로 검증하고 답변합니다.
 """
 )
+
+
+# 로컬 IP 확인 함수
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        return ip
+    except:
+        return "127.0.0.1"
 
 
 # 유틸리티 함수
@@ -84,14 +100,54 @@ def generate_file_tree(startpath):
 
 # 사이드바
 with st.sidebar:
-    st.header("프로젝트 선택")
+    st.header("환경 설정")
+
+    # 1. 모델 선택
+    model_options = ["qwen2.5-coder:7b", "llama3", "codellama", "mistral"]
+    selected_model = st.selectbox(
+        "LLM 모델 선택",
+        model_options,
+        index=0,
+        help="Ollama에 설치된 모델 이름을 선택하세요. (기본값: qwen2.5-coder)",
+    )
+
+    st.divider()
+
+    # 2. 프로젝트 선택
+    st.subheader("프로젝트 관리")
     existing_projects = get_existing_projects()
 
-    project_name = (
-        st.selectbox("학습된 프로젝트", existing_projects)
-        if existing_projects
-        else None
-    )
+    tab1, tab2 = st.tabs(["불러오기", "새로 학습"])
+
+    project_name = None
+
+    with tab1:
+        if existing_projects:
+            project_name = st.selectbox("학습된 프로젝트", existing_projects)
+            st.success(f"'{project_name}' 준비됨")
+        else:
+            st.info("학습된 프로젝트가 없습니다.")
+
+    with tab2:
+        new_project_name = st.text_input(
+            "새 프로젝트 이름 (DB명)", placeholder="my-project"
+        )
+        new_root_path = st.text_input("실제 파일 경로", placeholder="C:/Work/MyProject")
+
+        if st.button("DB 학습 시작", type="primary"):
+            if not new_project_name or not new_root_path:
+                st.error("이름과 경로를 모두 입력하세요.")
+            else:
+                with st.spinner(f"'{new_project_name}' 학습 중"):
+                    success, msg = embed_project(new_root_path, new_project_name)
+                    if success:
+                        st.success(msg)
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+        if new_project_name and not project_name:
+            project_name = new_project_name
 
     st.divider()
     project_root_path = st.text_input(
@@ -100,45 +156,83 @@ with st.sidebar:
 
     if project_root_path and os.path.isdir(project_root_path):
         with st.expander("파일 구조"):
-            st.code(generate_file_tree(project_root_path))
+            st.code(generate_file_tree(project_root_path), language="text")
 
-    # 새 프로젝트 학습 세션
-    with st.expander("새 프로젝트 학습"):
-        new_name = st.text_input("새 DB 이름")
-        new_path = st.text_input("새 프로젝트 경로")
-        if st.button("학습 시작"):
-            if new_name and new_path:
-                with st.spinner("학습 중"):
-                    success, msg = embed_project(new_path, new_name)
-                    if success:
-                        st.success(msg)
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error(msg)
+    # 대화 기록 초기화 버튼
+    if st.button("대화 내용 지우기"):
+        st.session_state.messages = []
+        st.rerun()
+
+    user_id = st.text_input("개발자 ID", value="Dev_User")
 
 
 # RAG 에이전트 로드
 @st.cache_resource
-def load_agent(prj_name):
+def load_agent(prj_name, model_name):
+    """프로젝트 DB와 선택된 LLM 모델을 사용하여 에이전트를 로드합니다."""
     db_path = os.path.join(BASE_DB_PATH, prj_name)
     if not os.path.exists(db_path):
         return None
 
     embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
-    vectorstore = Chroma(persist_directory=db_path, embedding_function=embeddings)
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
+    try:
+        vectorstore = Chroma(persist_directory=db_path, embedding_function=embeddings)
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
 
-    # 에이전트 인스턴스 생성 및 그래프 빌드
-    agent_instance = LocalRAGAgent(retriever, OLLAMA_MODEL_NAME, OLLAMA_BASE_URL)
-    app_graph = agent_instance.build_graph()
+        # 에이전트 인스턴스 생성 및 그래프 빌드
+        agent_instance = LocalRAGAgent(retriever, model_name, OLLAMA_BASE_URL)
+        app_graph = agent_instance.build_graph()
 
-    return app_graph
+        return app_graph
+    except Exception as e:
+        return str(e)
 
 
-# 메인 로직
-app_graph = load_agent(project_name) if project_name else None
-current_tree = generate_file_tree(project_root_path) if project_root_path else ""
+# 피드백 로깅 함수
+def log_feedback(project, user, question, answer, rating, docs):
+    file_exists = os.path.isfile(FEEDBACK_FILE)
+    with open(FEEDBACK_FILE, mode="a", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        if not file_exists:
+            writer.writerow(
+                [
+                    "Time",
+                    "Project",
+                    "User",
+                    "Question",
+                    "Answer",
+                    "Rating",
+                    "Context_Files",
+                ]
+            )
+
+        # 문서 객체에서 소스만 추출
+        sources = [d.metadata.get("source", "Unknown") for d in docs] if docs else []
+        writer.writerow(
+            [datetime.now(), project, user, question, answer, rating, str(sources)]
+        )
+
+
+# 메인 실행 로직
+app_graph = None
+current_tree = ""
+system_msg = ""
+is_ready = False
+
+if project_name:
+    # 선택된 모델을 인자로 전달
+    result = load_agent(project_name, selected_model)
+
+    # LangGraph 컴파일된 객체인지 확인 (Callable 하거나 invoke 메서드가 있어야 함)
+    if result and hasattr(result, "invoke"):
+        app_graph = result
+        is_ready = True
+        if project_root_path:
+            current_tree = generate_file_tree(project_root_path)
+    else:
+        system_msg = "프로젝트를 선택해주세요."
+
+# 채팅 UI
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -155,10 +249,10 @@ if prompt := st.chat_input("질문을 입력하세요."):
 
     with st.chat_message("assistant"):
         if not app_graph:
-            st.error("프로젝트를 선택해주세요.")
+            st.error("AI가 준비되지 않았습니다.")
         else:
             try:
-                with st.spinner("생각하고 검증하는 중 (Agentic workflow)"):
+                with st.spinner(f"{selected_model}가 생각하고 검증하는 중"):
                     # LangGraph 실행
                     inputs = {
                         "question": prompt,
@@ -166,18 +260,19 @@ if prompt := st.chat_input("질문을 입력하세요."):
                         "file_tree": current_tree,
                     }
 
-                    # 스트리밍 대신 invoke로 전체 실행 결과 받기
                     final_state = app_graph.invoke(inputs)
-                    answer = final_state["generation"]
+                    answer = final_state.get(
+                        "generation", "답변을 생성하지 못했습니다."
+                    )
 
                     st.markdown(answer)
 
                     # 검증된 문서만 근거로 표시
                     valid_docs = final_state.get("documents", [])
                     if valid_docs:
-                        with st.expander(f"검증된 근거 문서 ({{len(valid_docs)}})"):
+                        with st.expander(f"검증된 근거 문서 ({len(valid_docs)}개)"):
                             for doc in valid_docs:
-                                st.caption(f"{doc.metadata.get('source')}")
+                                st.caption(f"{doc.metadata.get('source', 'Unknown')}")
                                 st.code(doc.page_content)
                     else:
                         st.caption(
@@ -186,5 +281,37 @@ if prompt := st.chat_input("질문을 입력하세요."):
                 st.session_state.messages.append(
                     {"role": "assistant", "content": answer}
                 )
+
+                # 피드백 상태 저장
+                st.session_state.last_interaction = {
+                    "p": project_name,
+                    "q": prompt,
+                    "a": answer,
+                    "d": valid_docs,
+                }
+                st.rerun()
+
             except Exception as e:
                 st.error(f"오류: {e}")
+
+# 피드백 UI
+if (
+    is_ready
+    and "last_interaction" in st.session_state
+    and st.session_state.last_interaction
+):
+    st.divider()
+    cols = st.columns([1, 1, 6])
+    last = st.session_state.last_interaction
+
+    if cols[0].button("👍"):
+        log_feedback(last["p"], user_id, last["q"], last["a"], "Good", last["d"])
+        st.toast("피드백 저장됨!")
+        del st.session_state.last_interaction
+        st.rerun()
+
+    if cols[1].button("👎"):
+        log_feedback(last["p"], user_id, last["q"], last["a"], "Bad", last["d"])
+        st.toast("피드백 저장됨!")
+        del st.session_state.last_interaction
+        st.rerun()
