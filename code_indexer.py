@@ -8,7 +8,6 @@ import warnings
 warnings.filterwarnings("ignore")
 
 from langchain_community.document_loaders import TextLoader
-
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
@@ -114,8 +113,10 @@ def load_documents(root_dir: str):
     return documents
 
 
-def index_codebase(documents: list[Document], project_name: str):
+def index_codebase(documents: list[Document], project_name: str, user_id: str):
     """
+    사용자 ID(user_id)를 받아 격리된 경로에 저장합니다.
+    경로: ./chroma_db/{user_id}/{project_name}
     로드된 코드를 벡터화하여 저장합니다.
     """
 
@@ -151,7 +152,7 @@ def index_codebase(documents: list[Document], project_name: str):
 
 
 # 외부 호출용 래퍼 함수
-def embed_project(root_dir, project_name):
+def embed_project(root_dir, project_name, user_id="common"):
     """
     Streamlit 등 외부 앱에서 호출하기 위한 통합 함수.
     성공 여부와 메시지를 반환합니다.
@@ -167,7 +168,7 @@ def embed_project(root_dir, project_name):
                 "⚠️ 로드된 파일이 없습니다. 경로 내에 소스 코드가 있는지 확인하세요.",
             )
 
-        chunk_count = index_codebase(docs, project_name)
+        chunk_count = index_codebase(docs, project_name, user_id)
         return (
             True,
             f"✅ 학습 완료! 총 {len(docs)}개 파일, {chunk_count}개 청크",
@@ -190,11 +191,12 @@ if __name__ == "__main__":
         help="프로젝트 식별 이름 (기본값: default)",
     )
     args = parser.parse_args()
+    parser.add_argument("--user", type=str, default="admin")
 
     # 입력된 경로를 절대 경로로 변환하여 파일 로딩의 안정성을 높입니다.
     root = os.path.abspath(args.project_path)
     name = args.name if args.name != "default" else os.path.basename(root)
 
     print(f"'{name}' 고도화 학습 시작.")
-    success, msg = embed_project(root, name)
+    success, msg = embed_project(root, name, args.user)
     print(msg)

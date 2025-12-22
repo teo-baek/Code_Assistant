@@ -28,12 +28,51 @@ FEEDBACK_FILE = "rag_feedback.csv"
 
 # 페이지 설정
 st.set_page_config(page_title="Agentic Code Assistant", layout="wide")
-st.markdown(
-    """
-### Agentic Co-Developer: 
-이 도구는 Agentic RAG 기술을 사용하여, 검색된 코드가 질문과 관련이 있는지 스스로 검증하고 답변합니다.
-"""
-)
+
+# 1. 로그인 세션
+# ----------
+if "user_id" not in st.session_state:
+    st.session_state.user_id = None
+
+
+def login_ui():
+    st.title("AI Co-Developer 로그인")
+    st.markdown("자신의 ID(또는 팀명)를 입력하여 전용 작업 공간에 접속하세요.")
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        user_input = st.text_input(
+            "사용자 ID", placeholder="예: dev_kim", key="login_input"
+        )
+    with col2:
+        st.write("")  # 줄맞춤
+        st.write("")
+        if st.button("접속하기", type="primary"):
+            if user_input:
+                st.session_state.user_id = user_input
+                st.rerun()
+            else:
+                st.warning("ID를 입력해주세요.")
+
+
+# 로그인이 안 되어 있으면 로그인 화면만 표시하고 중단
+if not st.session_state.user_id:
+    login_ui()
+    st.stop()
+
+
+# 2. 메인 어플리케이션 (로그인 후)
+# ----------
+CURRENT_USER = st.session_state.user_id
+
+with st.sidebar:
+    st.info(f"접속자: {CURRENT_USER}")
+    if st.button("로그아웃"):
+        st.session_state.user_id = None
+        st.rerun()
+    st.divider()
+
+st.markdown(f"### Agentic Co-Developer: {CURRENT_USER}")
 
 
 # 로컬 IP 확인 함수
@@ -42,22 +81,24 @@ def get_local_ip():
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
+        s.close()
         return ip
     except:
         return "127.0.0.1"
 
 
 # 유틸리티 함수
-def get_existing_projects():
-    """chroma_db 폴더를 스캔하여 학습된 프로젝트 목록을 반환합니다."""
-    if not os.path.exists(BASE_DB_PATH):
+def get_existing_projects(user_id):
+    """현재 접속한 사용자의 폴더(Chroma_db/user_id)만 조회합니다."""
+    user_path = os.path.join(BASE_DB_PATH, user_id)
+    if not os.path.exists(user_path):
         return []
     # 폴더이면서 숨김 파일이 아닌 것들만 리스트업
     return sorted(
         [
             d
-            for d in os.listdir(BASE_DB_PATH)
-            if os.path.isdir(os.path.join(BASE_DB_PATH, d)) and not d.startswith(".")
+            for d in os.listdir(user_path)
+            if os.path.isdir(os.path.join(user_path, d)) and not d.startswith(".")
         ]
     )
 
@@ -115,31 +156,31 @@ with st.sidebar:
 
     # 2. 프로젝트 선택
     st.subheader("프로젝트 관리")
-    existing_projects = get_existing_projects()
+    existing_projects = get_existing_projects(CURRENT_USER)
 
-    tab1, tab2 = st.tabs(["불러오기", "새로 학습"])
+    tab1, tab2 = st.tabs(["내 프로젝트", "새로 추가"])
 
     project_name = None
 
     with tab1:
         if existing_projects:
-            project_name = st.selectbox("학습된 프로젝트", existing_projects)
+            project_name = st.selectbox("프로젝트 선택", existing_projects)
             st.success(f"'{project_name}' 준비됨")
         else:
             st.info("학습된 프로젝트가 없습니다.")
 
     with tab2:
-        new_project_name = st.text_input(
-            "새 프로젝트 이름 (DB명)", placeholder="my-project"
-        )
+        new_project_name = st.text_input("새 프로젝트 이름", placeholder="my-project")
         new_root_path = st.text_input("실제 파일 경로", placeholder="C:/Work/MyProject")
 
-        if st.button("DB 학습 시작", type="primary"):
+        if st.button("학습 시작", type="primary"):
             if not new_project_name or not new_root_path:
                 st.error("이름과 경로를 모두 입력하세요.")
             else:
                 with st.spinner(f"'{new_project_name}' 학습 중"):
-                    success, msg = embed_project(new_root_path, new_project_name)
+                    success, msg = embed_project(
+                        new_root_path, new_project_name, CURRENT_USER
+                    )
                     if success:
                         st.success(msg)
                         time.sleep(1)
@@ -156,21 +197,21 @@ with st.sidebar:
 
     if project_root_path and os.path.isdir(project_root_path):
         with st.expander("파일 구조"):
-            st.code(generate_file_tree(project_root_path), language="text")
+            st.code(generate_file_tree(project_root_path))
 
     # 대화 기록 초기화 버튼
     if st.button("대화 내용 지우기"):
         st.session_state.messages = []
         st.rerun()
 
-    user_id = st.text_input("개발자 ID", value="Dev_User")
+    st.caption(f"공유 주소: http://{get_local_ip()}:8501")
 
 
 # RAG 에이전트 로드
 @st.cache_resource
-def load_agent(prj_name, model_name):
-    """프로젝트 DB와 선택된 LLM 모델을 사용하여 에이전트를 로드합니다."""
-    db_path = os.path.join(BASE_DB_PATH, prj_name)
+def load_agent(user_id, prj_name, model_name):
+    """사용자별 프로젝트와 선택된 LLM 모델을 사용하여 에이전트를 로드합니다."""
+    db_path = os.path.join(BASE_DB_PATH, user_id, prj_name)
     if not os.path.exists(db_path):
         return None
 
@@ -216,12 +257,11 @@ def log_feedback(project, user, question, answer, rating, docs):
 # 메인 실행 로직
 app_graph = None
 current_tree = ""
-system_msg = ""
 is_ready = False
 
 if project_name:
     # 선택된 모델을 인자로 전달
-    result = load_agent(project_name, selected_model)
+    result = load_agent(CURRENT_USER, project_name, selected_model)
 
     # LangGraph 컴파일된 객체인지 확인 (Callable 하거나 invoke 메서드가 있어야 함)
     if result and hasattr(result, "invoke"):
@@ -248,8 +288,8 @@ if prompt := st.chat_input("질문을 입력하세요."):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        if not app_graph:
-            st.error("AI가 준비되지 않았습니다.")
+        if not is_ready:
+            st.error("프로젝트가 선택되지 않았거나 로드할 수 없습니다.")
         else:
             try:
                 with st.spinner(f"{selected_model}가 생각하고 검증하는 중"):
@@ -305,13 +345,13 @@ if (
     last = st.session_state.last_interaction
 
     if cols[0].button("👍"):
-        log_feedback(last["p"], user_id, last["q"], last["a"], "Good", last["d"])
+        log_feedback(last["p"], CURRENT_USER, last["q"], last["a"], "Good", last["d"])
         st.toast("피드백 저장됨!")
         del st.session_state.last_interaction
         st.rerun()
 
     if cols[1].button("👎"):
-        log_feedback(last["p"], user_id, last["q"], last["a"], "Bad", last["d"])
+        log_feedback(last["p"], CURRENT_USER, last["q"], last["a"], "Bad", last["d"])
         st.toast("피드백 저장됨!")
         del st.session_state.last_interaction
         st.rerun()
