@@ -4,6 +4,8 @@ import argparse
 import shutil
 import warnings
 
+from graph_builder import CodeGraphBuiler
+
 # 경고 메세지 숨기기
 warnings.filterwarnings("ignore")
 
@@ -113,11 +115,12 @@ def load_documents(root_dir: str):
     return documents
 
 
-def index_codebase(documents: list[Document], project_name: str, user_id: str):
+def index_codebase(
+    documents: list[Document], project_name: str, user_id: str, root_dir: str
+):
     """
-    사용자 ID(user_id)를 받아 격리된 경로에 저장합니다.
-    경로: ./chroma_db/{user_id}/{project_name}
-    로드된 코드를 벡터화하여 저장합니다.
+    1. 벡터 DB 저장 (텍스트 유사도 검색용)
+    2. 그래프 DB 저장 (구조적 관계 검색용)
     """
 
     # 1. 텍스트 분할
@@ -127,26 +130,41 @@ def index_codebase(documents: list[Document], project_name: str, user_id: str):
     texts = text_splitter.split_documents(documents)
 
     # 2. 임베딩 모델
+    print("임베딩 모델 로드 중.")
     embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
 
-    # 3. 저장 경로 (프로젝트별 격리)
-    persist_dir = os.path.join(CHROMA_DB_PATH, project_name)
+    # 3. 저장 경로 (사용자별 격리)
+    user_db_path = os.path.join(CHROMA_DB_PATH, user_id)
+    persist_dir = os.path.join(user_db_path, project_name)
 
     # Clean Build: 기존 데이터가 있으면 삭제하고 새로 생성
     if os.path.exists(persist_dir):
         try:
             shutil.rmtree(persist_dir)
-        except Exception as e:
-            print(f"경고: 기존 DB 삭제 실패 ({e})")
+        except:
+            pass
 
     # 4. 벡터 DB 생성 및 저장
-    print("벡터 데이터베이스 저장 중")
+    print(f"벡터 데이터베이스 저장 중. (경로: {persist_dir})")
     db = Chroma.from_documents(texts, embeddings, persist_directory=persist_dir)
     # Chroma 최신 버전은 db.persist()가 자동 수행되지만, 명시적으로 남겨둠
     try:
         db.persist()
     except:
         pass
+
+    # 그래프 DB 구축 (Graph RAG)
+    print("그래프 데이터베이스 구축 중.")
+    graph_builder = CodeGraphBuiler()
+
+    # 전체 프로젝트 폴더를 스캔하여 관계도를 그립니다.
+    graph_builder.build_graph(root_dir)
+
+    # 그래프 데이터를 파일로 저장합니다.
+    # 벡터 DB 폴더 안에 같이 저장하여 관리를 용이하게 합니다.
+    graph_save_path = os.path.join(persist_dir, "project_graph.pkl")
+    graph_builder.save(graph_save_path)
+    print(f"그래프 저장 완료: {graph_save_path}")
 
     return len(texts)
 
@@ -168,7 +186,8 @@ def embed_project(root_dir, project_name, user_id="common"):
                 "⚠️ 로드된 파일이 없습니다. 경로 내에 소스 코드가 있는지 확인하세요.",
             )
 
-        chunk_count = index_codebase(docs, project_name, user_id)
+        # index_codebase에 root_dir 인자를 추가로 전달합니다.
+        chunk_count = index_codebase(docs, project_name, user_id, root_dir)
         return (
             True,
             f"✅ 학습 완료! 총 {len(docs)}개 파일, {chunk_count}개 청크",
@@ -190,8 +209,8 @@ if __name__ == "__main__":
         default="default",
         help="프로젝트 식별 이름 (기본값: default)",
     )
-    args = parser.parse_args()
     parser.add_argument("--user", type=str, default="admin")
+    args = parser.parse_args()
 
     # 입력된 경로를 절대 경로로 변환하여 파일 로딩의 안정성을 높입니다.
     root = os.path.abspath(args.project_path)
