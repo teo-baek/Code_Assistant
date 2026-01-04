@@ -1,49 +1,32 @@
+# AI와의 대화를 위해 다양한 언어를 번역해주는 번역사 역할을 하는 파일
+
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.chat_models import ChatOllama
 
-class TranslatorAgent:
-    def __init__(self, llm_model_name, base_url):
-        # 번역을 위한 LLM 인스턴스 생성
-        self.llm = ChatOllama(model=llm_model_name, base_url=base_url, temperature=0)
+class LanguageTranslator:
+    """
+    사용자가 입력한 언어를 AI가 잘 이해하는 영어로 바꾸거나,
+    AI의 영어 답변을 사용자가 원하는 언어로 다시 번역해주는 클래스
+    """
+    def __init__(self, model_name, base_url):
+        # 번역을 수행할 AI 모델의 이름과 접속 주소를 설정합니다.
+        self.llm = ChatOllama(model=model_name, base_url=base_url, temperature=0)
 
-    def translate_to_english(self, text):
+    def translate(self, text, target_lang, source_lang= "Auto"):
         """
-        한국어 텍스트를 영어로 번역합니다.
-        코드 생성에 최적화된 기술적인 영어 표현을 사용하도록 유도합니다.
-        """
-        prompt = PromptTemplate(
-            template="""You are a professional technical translator.
-            Translate the following Korean text into English.
-            The translation should be optimized for a code generation AI to understand.
-            Use precise technical terminology.
-            Do not include any explanations, only the translated text.
-
-            Korean text: {text}
-
-            English translation:""",
-            input_variables=["text"],
-        )
-        chain = prompt | self.llm | StrOutputParser()
-        return chain.invoke({"text": text}).strip()
-
-    def translate_to_korean(self, text, source_language="English"):
-        """
-        영어 텍스트를 한국어로 번역합니다.
-        기술 용어는 원어 그대로 유지하거나 자연스러운 한국어 용어로 변환합니다.
+        입력받은 문장을 목표 언어로 번역하여 결과물로 돌려줍니다.
         """
         prompt = PromptTemplate(
             template="""You are a professional technical translator.
-            Translate the following text (which is in {source_language}) into Korean.
-            Keep technical terms (like variable names, function names, library names) in their original English form if appropriate for a developer audience.
-            Ensure the tone is professional and helpful.
-            Do not include any explanations, only the translated text.
+            Translate the following text from {source_lang} to {target_lang}.
+            If it's a technical term or code, keep the meaning precise.
+            Output ONLY the translated text without any explanation.
+        
+            Text: {text}
 
-            Text to translate:
-            {text}
-
-            Korean translation:""",
-            input_variables=["text", "source_language"],
+            Translation:""",
+            input_variables=["text", "source_lang", "target_lang"],
         )
         chain = prompt | self.llm | StrOutputParser()
-        return chain.invoke({"text": text, "source_language": source_language}).strip()
+        return chain.invoke({"text": text}, "source_lang": source_lang, "target_lang": target_lang).strip()
