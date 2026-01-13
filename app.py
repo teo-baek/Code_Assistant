@@ -2,6 +2,7 @@
 
 import streamlit as st
 import os
+from streamlit_agraph import agraph, Node, Edge, Config
 
 from brain_manager import BrainManager
 from translator import LanguageTranslator
@@ -9,21 +10,55 @@ from architect import DevelopmentArchitect
 from code_indexer import CodebaseIndexer
 from rag_agent import AgenticBrain
 
+from graph_manager import CodeGraphManager
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
 from langchain_community.vectorstores import Chroma
 
 class CodeAssistantUI:
     """
     웹 화면의 모든 버튼과 기능을 배치하고 사용자와 소통하는 클래스
+    사용자가 AI의 생각을 시각적으로 확인하고, 코드를 직접 수정/승인하는 인터페이스
     """
     def __init__(self):
         # 기본 서버 주소와 설정값을 정함
         self.OLLAMA_URL = "http://localhost:11434"
         self.DB_PATH = "./chroma_db"
         self.EMBED_MODEL = "BAAI/bge-small-en-v1.5"
+        self.NEO4J_URI = "bolt://localhost:7687"        # Neo4j 주소
 
         self.brain_mgr = BrainManager(self.OLLAMA_URL)
         self.architect = DevelopmentArchitect()
+        self.graph_mgr = CodeGraphManager(self.NEO4J_URI, "neo4j", "password")
+
+    def show_graph_viz(self, file_name):
+        """
+        Neo4j 데이터를 읽어와서 특정 파일의 영향 범위를 그래프 그림으로 보여줌
+        """
+        st.subheader(f"'{file_name}' 관련 의존성 지도")
+
+        # Neo4j에서 관계 데이터를 가져옴
+        relations = self.graph_mgr.get_context_map(file_name)
+
+        nodes = []
+        edges = []
+
+        # 중심 노드 추가
+        nodes.append(Node(id=file_name, label= file_name, size= 25, color= "#005088"))
+
+        for rel in relations:
+            parts = rel.split(" --")
+            neighbor = parts[1].split("-- ")[1]
+            rel_type = parts[1].split("(")[1].split(")")[0]
+
+            # 이웃 점과 연결 선을 추가합니다.
+            nodes.append(Node(id= neighbor, label= neighbor, size= 15, color="#11CAA0"))
+            edges.append(Edge(source= file_name, target= neighbor, label= rel_type))
+        
+        # 그래프 설정
+        config = Config(width= 800, height= 400, directed= True, nodeHighlightBehavior= True, highlightColor= "#F3F0DF", collapsible= True)
+
+        # 화면에 그래프를 그림
+        agraph(nodes= nodes, edges= edges, config= config)
 
     def run(self):
         """웹 화면을 구성하고 프로그램을 실행함"""
@@ -50,6 +85,33 @@ class CodeAssistantUI:
             selected_stack = st.selectbox("개발 기술 스택 선택", ["Streamlit", "React", "Flutter", "Flast", "HTML/CSS", "Java", "JavaScript"])
 
             st.divider()
+            if st.button("그래프 DB 초기화"):
+                self.graph_mgr.reset_graph()
+                st.toast("Neo4j 데이터가 초기화되었습니다.")
+            
+            # 메인 화면: 2분할 (왼쪽: 채팅/시각화, 오른쪽: 코드 리뷰)
+            col_chat, col_review = st.columns([1, 1])
+
+            with col_chat:
+                st.subheader("GrowCode")
+                if "messages" not in st.session_state: st.session_state.messages = []
+                for msg in st.session_state.messages:
+                    with st.chat_message(msg["role"]): st.markdown(msg["content"])
+                
+                if prompt := st.chat_input("작업을 지시하세요"):
+                    st.session_state.messages.append({"role": "user", "content": prompt})
+                    st.rerun()
+            
+            # 질문이 새로 들어왔을 때의 처리 로직
+            if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+                user_prompt = st.session_state.messages[-1]["content"]
+
+                # 1. 번역 및 검색 준비
+                translator = LanguageTranslator(selected_model, self.OLLAMA_URL)
+                en_query = translator.translate(user_prompt, "English")
+
+                db_dir = os.path.join(self.DB_PATH, st.session_state.user_id, "default_project")
+                if os.path.exists(db_dir):
 
             st.subheader("프로젝트 지식 추가")
             p_name = st.text_input("프로젝트 별명")

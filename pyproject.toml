@@ -17,5 +17,6 @@ dependencies = [
     "pydantic>=2.12.5",
     "sentence-transformers>=5.1.2",
     "streamlit>=1.32.0",
+    "streamlit-agraph>=0.0.45",
     "watchdog>=4.0.0",
 ]
